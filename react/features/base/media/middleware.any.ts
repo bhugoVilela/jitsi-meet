@@ -1,60 +1,70 @@
-import { AnyAction } from 'redux';
+import { AnyAction } from "redux";
+import { Buffer } from "buffer/";
+// @ts-ignore
+window.Buffer = Buffer
 
 import {
     createStartAudioOnlyEvent,
     createStartMutedConfigurationEvent,
     createSyncTrackStateEvent,
-    createTrackMutedEvent
-} from '../../analytics/AnalyticsEvents';
-import { sendAnalytics } from '../../analytics/functions';
-import { IStore } from '../../app/types';
-import { APP_STATE_CHANGED } from '../../mobile/background/actionTypes';
-import { showWarningNotification } from '../../notifications/actions';
-import { NOTIFICATION_TIMEOUT_TYPE } from '../../notifications/constants';
-import { isForceMuted } from '../../participants-pane/functions';
-import { isScreenMediaShared } from '../../screen-share/functions';
-import { SET_AUDIO_ONLY } from '../audio-only/actionTypes';
-import { setAudioOnly } from '../audio-only/actions';
-import { SET_ROOM } from '../conference/actionTypes';
-import { isRoomValid } from '../conference/functions';
-import { getMultipleVideoSendingSupportFeatureFlag } from '../config/functions.any';
-import { getLocalParticipant } from '../participants/functions';
-import MiddlewareRegistry from '../redux/MiddlewareRegistry';
-import { getPropertyValue } from '../settings/functions.any';
-import { TRACK_ADDED } from '../tracks/actionTypes';
-import { destroyLocalTracks } from '../tracks/actions.any';
+    createTrackMutedEvent,
+} from "../../analytics/AnalyticsEvents";
+import { sendAnalytics } from "../../analytics/functions";
+import { IStore } from "../../app/types";
+import { APP_STATE_CHANGED } from "../../mobile/background/actionTypes";
+import { showWarningNotification } from "../../notifications/actions";
+import { NOTIFICATION_TIMEOUT_TYPE } from "../../notifications/constants";
+import { isForceMuted } from "../../participants-pane/functions";
+import { isScreenMediaShared } from "../../screen-share/functions";
+import { SET_AUDIO_ONLY } from "../audio-only/actionTypes";
+import { setAudioOnly } from "../audio-only/actions";
+import { SET_ROOM } from "../conference/actionTypes";
+import { isRoomValid } from "../conference/functions";
+import { getMultipleVideoSendingSupportFeatureFlag } from "../config/functions.any";
+import { getLocalParticipant } from "../participants/functions";
+import MiddlewareRegistry from "../redux/MiddlewareRegistry";
+import { getPropertyValue } from "../settings/functions.any";
+import { TRACK_ADDED } from "../tracks/actionTypes";
+import { destroyLocalTracks } from "../tracks/actions.any";
 import {
     getCameraFacingMode,
     isLocalTrackMuted,
     isLocalVideoTrackDesktop,
-    setTrackMuted
-} from '../tracks/functions.any';
-import { ITrack } from '../tracks/types';
+    setTrackMuted,
+} from "../tracks/functions.any";
+import { ITrack } from "../tracks/types";
+import Mic from "./MicrophoneStream";
 
 import {
     SET_AUDIO_MUTED,
     SET_AUDIO_UNMUTE_PERMISSIONS,
     SET_SCREENSHARE_MUTED,
     SET_VIDEO_MUTED,
-    SET_VIDEO_UNMUTE_PERMISSIONS
-} from './actionTypes';
+    SET_VIDEO_UNMUTE_PERMISSIONS,
+} from "./actionTypes";
 import {
     setAudioMuted,
     setCameraFacingMode,
     setScreenshareMuted,
-    setVideoMuted
-} from './actions';
+    setVideoMuted,
+} from "./actions";
 import {
     MEDIA_TYPE,
     SCREENSHARE_MUTISM_AUTHORITY,
-    VIDEO_MUTISM_AUTHORITY
-} from './constants';
-import { getStartWithAudioMuted, getStartWithVideoMuted } from './functions';
-import logger from './logger';
+    VIDEO_MUTISM_AUTHORITY,
+} from "./constants";
+import { getStartWithAudioMuted, getStartWithVideoMuted } from "./functions";
+import logger from "./logger";
 import {
     _AUDIO_INITIAL_MEDIA_STATE,
-    _VIDEO_INITIAL_MEDIA_STATE
-} from './reducer';
+    _VIDEO_INITIAL_MEDIA_STATE,
+} from "./reducer";
+import { PassThrough, Stream } from "stream-browserify";
+import { EncodePcmStream } from "./EncodePCM";
+import { CONNECTION_DISCONNECTED } from "../connection/actionTypes";
+import { AudioRemoteSender } from "./AudioRemoteSender";
+
+const audioRemoteSender = new AudioRemoteSender()
 
 /**
  * Implements the entry point of the middleware of the feature base/media.
@@ -62,88 +72,126 @@ import {
  * @param {Store} store - The redux store.
  * @returns {Function}
  */
-MiddlewareRegistry.register(store => next => action => {
+MiddlewareRegistry.register((store) => (next) => (action) => {
     switch (action.type) {
-    case APP_STATE_CHANGED:
-        return _appStateChanged(store, next, action);
+        case APP_STATE_CHANGED:
+            return _appStateChanged(store, next, action);
 
-    case SET_AUDIO_ONLY:
-        return _setAudioOnly(store, next, action);
+        case SET_AUDIO_ONLY:
+            return _setAudioOnly(store, next, action);
 
-    case SET_ROOM:
-        return _setRoom(store, next, action);
+        case SET_ROOM:
+            return _setRoom(store, next, action);
 
-    case TRACK_ADDED: {
-        const result = next(action);
-        const { track } = action;
+        case CONNECTION_DISCONNECTED:
+            audioRemoteSender.emitAudioClose()
+            break
+        case TRACK_ADDED: {
+            const result = next(action);
+            const { track } = action;
 
-        // Don't sync track mute state with the redux store for screenshare
-        // since video mute state represents local camera mute state only.
-        track.local && track.videoType !== 'desktop'
-            && _syncTrackMutedState(store, track);
+            // Don't sync track mute state with the redux store for screenshare
+            // since video mute state represents local camera mute state only.
+            track.local &&
+                track.videoType !== "desktop" &&
+                _syncTrackMutedState(store, track);
 
-        return result;
-    }
+            if (track.mediaType === "audio") {
+                if (track.local) {
+                    audioRemoteSender.setLocalTrack(track)
+                } else {
+                    audioRemoteSender.setRemoteTrack(track)
+                }
+            }
 
-    case SET_AUDIO_MUTED: {
-        const state = store.getState();
-        const participant = getLocalParticipant(state);
-
-        if (!action.muted && isForceMuted(participant, MEDIA_TYPE.AUDIO, state)) {
-            return;
+            return result;
         }
-        break;
-    }
 
-    case SET_AUDIO_UNMUTE_PERMISSIONS: {
-        const { blocked, skipNotification } = action;
-        const state = store.getState();
-        const tracks = state['features/base/tracks'];
-        const isAudioMuted = isLocalTrackMuted(tracks, MEDIA_TYPE.AUDIO);
+        case SET_AUDIO_MUTED: {
+            const state = store.getState();
+            const participant = getLocalParticipant(state);
 
-        if (blocked && isAudioMuted && !skipNotification) {
-            store.dispatch(showWarningNotification({
-                descriptionKey: 'notify.audioUnmuteBlockedDescription',
-                titleKey: 'notify.audioUnmuteBlockedTitle'
-            }, NOTIFICATION_TIMEOUT_TYPE.MEDIUM));
+            if (
+                !action.muted &&
+                isForceMuted(participant, MEDIA_TYPE.AUDIO, state)
+            ) {
+                return;
+            }
+            break;
         }
-        break;
-    }
 
-    case SET_SCREENSHARE_MUTED: {
-        const state = store.getState();
-        const participant = getLocalParticipant(state);
+        case SET_AUDIO_UNMUTE_PERMISSIONS: {
+            const { blocked, skipNotification } = action;
+            const state = store.getState();
+            const tracks = state["features/base/tracks"];
+            const isAudioMuted = isLocalTrackMuted(tracks, MEDIA_TYPE.AUDIO);
 
-        if (!action.muted && isForceMuted(participant, MEDIA_TYPE.SCREENSHARE, state)) {
-            return;
+            if (blocked && isAudioMuted && !skipNotification) {
+                store.dispatch(
+                    showWarningNotification(
+                        {
+                            descriptionKey:
+                                "notify.audioUnmuteBlockedDescription",
+                            titleKey: "notify.audioUnmuteBlockedTitle",
+                        },
+                        NOTIFICATION_TIMEOUT_TYPE.MEDIUM,
+                    ),
+                );
+            }
+            break;
         }
-        break;
-    }
-    case SET_VIDEO_MUTED: {
-        const state = store.getState();
-        const participant = getLocalParticipant(state);
 
-        if (!action.muted && isForceMuted(participant, MEDIA_TYPE.VIDEO, state)) {
-            return;
+        case SET_SCREENSHARE_MUTED: {
+            const state = store.getState();
+            const participant = getLocalParticipant(state);
+
+            if (
+                !action.muted &&
+                isForceMuted(participant, MEDIA_TYPE.SCREENSHARE, state)
+            ) {
+                return;
+            }
+            break;
         }
-        break;
-    }
+        case SET_VIDEO_MUTED: {
+            const state = store.getState();
+            const participant = getLocalParticipant(state);
 
-    case SET_VIDEO_UNMUTE_PERMISSIONS: {
-        const { blocked, skipNotification } = action;
-        const state = store.getState();
-        const tracks = state['features/base/tracks'];
-        const isVideoMuted = isLocalTrackMuted(tracks, MEDIA_TYPE.VIDEO);
-        const isMediaShared = isScreenMediaShared(state);
-
-        if (blocked && isVideoMuted && !isMediaShared && !skipNotification) {
-            store.dispatch(showWarningNotification({
-                descriptionKey: 'notify.videoUnmuteBlockedDescription',
-                titleKey: 'notify.videoUnmuteBlockedTitle'
-            }, NOTIFICATION_TIMEOUT_TYPE.MEDIUM));
+            if (
+                !action.muted &&
+                isForceMuted(participant, MEDIA_TYPE.VIDEO, state)
+            ) {
+                return;
+            }
+            break;
         }
-        break;
-    }
+
+        case SET_VIDEO_UNMUTE_PERMISSIONS: {
+            const { blocked, skipNotification } = action;
+            const state = store.getState();
+            const tracks = state["features/base/tracks"];
+            const isVideoMuted = isLocalTrackMuted(tracks, MEDIA_TYPE.VIDEO);
+            const isMediaShared = isScreenMediaShared(state);
+
+            if (
+                blocked &&
+                isVideoMuted &&
+                !isMediaShared &&
+                !skipNotification
+            ) {
+                store.dispatch(
+                    showWarningNotification(
+                        {
+                            descriptionKey:
+                                "notify.videoUnmuteBlockedDescription",
+                            titleKey: "notify.videoUnmuteBlockedTitle",
+                        },
+                        NOTIFICATION_TIMEOUT_TYPE.MEDIUM,
+                    ),
+                );
+            }
+            break;
+        }
     }
 
     return next(action);
@@ -161,12 +209,17 @@ MiddlewareRegistry.register(store => next => action => {
  * @private
  * @returns {Object} The value returned by {@code next(action)}.
  */
-function _appStateChanged({ dispatch, getState }: IStore, next: Function, action: AnyAction) {
-    if (navigator.product === 'ReactNative') {
+function _appStateChanged(
+    { dispatch, getState }: IStore,
+    next: Function,
+    action: AnyAction,
+) {
+    if (navigator.product === "ReactNative") {
         const { appState } = action;
-        const mute = appState !== 'active' && !isLocalVideoTrackDesktop(getState());
+        const mute =
+            appState !== "active" && !isLocalVideoTrackDesktop(getState());
 
-        sendAnalytics(createTrackMutedEvent('video', 'background mode', mute));
+        sendAnalytics(createTrackMutedEvent("video", "background mode", mute));
 
         dispatch(setVideoMuted(mute, VIDEO_MUTISM_AUTHORITY.BACKGROUND));
     }
@@ -186,16 +239,25 @@ function _appStateChanged({ dispatch, getState }: IStore, next: Function, action
  * @private
  * @returns {Object} The value returned by {@code next(action)}.
  */
-function _setAudioOnly({ dispatch, getState }: IStore, next: Function, action: AnyAction) {
+function _setAudioOnly(
+    { dispatch, getState }: IStore,
+    next: Function,
+    action: AnyAction,
+) {
     const { audioOnly } = action;
     const state = getState();
 
-    sendAnalytics(createTrackMutedEvent('video', 'audio-only mode', audioOnly));
+    sendAnalytics(createTrackMutedEvent("video", "audio-only mode", audioOnly));
 
     // Make sure we mute both the desktop and video tracks.
     dispatch(setVideoMuted(audioOnly, VIDEO_MUTISM_AUTHORITY.AUDIO_ONLY));
     if (getMultipleVideoSendingSupportFeatureFlag(state)) {
-        dispatch(setScreenshareMuted(audioOnly, SCREENSHARE_MUTISM_AUTHORITY.AUDIO_ONLY));
+        dispatch(
+            setScreenshareMuted(
+                audioOnly,
+                SCREENSHARE_MUTISM_AUTHORITY.AUDIO_ONLY,
+            ),
+        );
     }
 
     return next(action);
@@ -215,7 +277,11 @@ function _setAudioOnly({ dispatch, getState }: IStore, next: Function, action: A
  * @returns {Object} The new state that is the result of the reduction of the
  * specified {@code action}.
  */
-function _setRoom({ dispatch, getState }: IStore, next: Function, action: AnyAction) {
+function _setRoom(
+    { dispatch, getState }: IStore,
+    next: Function,
+    action: AnyAction,
+) {
     // Figure out the desires/intents i.e. the state of base/media. There are
     // multiple desires/intents ordered by precedence such as server-side
     // config, config overrides in the user-supplied URL, user's own app
@@ -226,12 +292,24 @@ function _setRoom({ dispatch, getState }: IStore, next: Function, action: AnyAct
     const roomIsValid = isRoomValid(room);
 
     // when going to welcomepage on web(room is not valid) we want to skip resetting the values of startWithA/V
-    if (roomIsValid || navigator.product === 'ReactNative') {
-        const audioMuted = roomIsValid ? getStartWithAudioMuted(state) : _AUDIO_INITIAL_MEDIA_STATE.muted;
-        const videoMuted = roomIsValid ? getStartWithVideoMuted(state) : _VIDEO_INITIAL_MEDIA_STATE.muted;
+    if (roomIsValid || navigator.product === "ReactNative") {
+        const audioMuted = roomIsValid
+            ? getStartWithAudioMuted(state)
+            : _AUDIO_INITIAL_MEDIA_STATE.muted;
+        const videoMuted = roomIsValid
+            ? getStartWithVideoMuted(state)
+            : _VIDEO_INITIAL_MEDIA_STATE.muted;
 
-        sendAnalytics(createStartMutedConfigurationEvent('local', audioMuted, Boolean(videoMuted)));
-        logger.log(`Start muted: ${audioMuted ? 'audio, ' : ''}${videoMuted ? 'video' : ''}`);
+        sendAnalytics(
+            createStartMutedConfigurationEvent(
+                "local",
+                audioMuted,
+                Boolean(videoMuted),
+            ),
+        );
+        logger.log(
+            `Start muted: ${audioMuted ? "audio, " : ""}${videoMuted ? "video" : ""}`,
+        );
 
         // Unconditionally express the desires/expectations/intents of the app and
         // the user i.e. the state of base/media. Eventually, practice/reality i.e.
@@ -251,36 +329,37 @@ function _setRoom({ dispatch, getState }: IStore, next: Function, action: AnyAct
     // XXX After the introduction of the "Video <-> Voice" toggle on the
     // WelcomePage, startAudioOnly is utilized even outside of
     // conferences/meetings.
-    const audioOnly
-        = Boolean(
-            getPropertyValue(
-                state,
-                'startAudioOnly',
-                /* sources */ {
-                    // FIXME Practically, base/config is (really) correct
-                    // only if roomIsValid. At the time of this writing,
-                    // base/config is overwritten by URL params which leaves
-                    // base/config incorrect on the WelcomePage after
-                    // leaving a conference which explicitly overwrites
-                    // base/config with URL params.
-                    config: roomIsValid,
+    const audioOnly = Boolean(
+        getPropertyValue(
+            state,
+            "startAudioOnly",
+            /* sources */ {
+                // FIXME Practically, base/config is (really) correct
+                // only if roomIsValid. At the time of this writing,
+                // base/config is overwritten by URL params which leaves
+                // base/config incorrect on the WelcomePage after
+                // leaving a conference which explicitly overwrites
+                // base/config with URL params.
+                config: roomIsValid,
 
-                    // XXX We've already overwritten base/config with
-                    // urlParams if roomIsValid. However, settings are more
-                    // important than the server-side config. Consequently,
-                    // we need to read from urlParams anyway. We also
-                    // probably want to read from urlParams when
-                    // !roomIsValid.
-                    urlParams: true,
+                // XXX We've already overwritten base/config with
+                // urlParams if roomIsValid. However, settings are more
+                // important than the server-side config. Consequently,
+                // we need to read from urlParams anyway. We also
+                // probably want to read from urlParams when
+                // !roomIsValid.
+                urlParams: true,
 
-                    // The following don't have complications around whether
-                    // they are defined or not:
-                    jwt: false,
+                // The following don't have complications around whether
+                // they are defined or not:
+                jwt: false,
 
-                    // We need to look for 'startAudioOnly' in settings only for react native clients. Otherwise, the
-                    // default value from ISettingsState (false) will override the value set in config for web clients.
-                    settings: typeof APP === 'undefined'
-                }));
+                // We need to look for 'startAudioOnly' in settings only for react native clients. Otherwise, the
+                // default value from ISettingsState (false) will override the value set in config for web clients.
+                settings: typeof APP === "undefined",
+            },
+        ),
+    );
 
     sendAnalytics(createStartAudioOnlyEvent(audioOnly));
     logger.log(`Start audio only set to ${audioOnly.toString()}`);
@@ -303,7 +382,7 @@ function _setRoom({ dispatch, getState }: IStore, next: Function, action: AnyAct
  * @returns {void}
  */
 function _syncTrackMutedState({ getState, dispatch }: IStore, track: ITrack) {
-    const state = getState()['features/base/media'];
+    const state = getState()["features/base/media"];
     const mediaType = track.mediaType;
     const muted = Boolean(state[mediaType].muted);
 
@@ -314,9 +393,84 @@ function _syncTrackMutedState({ getState, dispatch }: IStore, track: ITrack) {
     // fired before track gets to state.
     if (track.muted !== muted) {
         sendAnalytics(createSyncTrackStateEvent(mediaType, muted));
-        logger.log(`Sync ${mediaType} track muted state to ${muted ? 'muted' : 'unmuted'}`);
+        logger.log(
+            `Sync ${mediaType} track muted state to ${muted ? "muted" : "unmuted"}`,
+        );
 
         track.muted = muted;
         setTrackMuted(track.jitsiTrack, muted, state, dispatch);
     }
+}
+
+function processTrack(track: any, callback: (b: Buffer) => void) {
+    try {
+        console.log("[DEBUG] processing track");
+        const context = new AudioContext();
+        const destination = context.createMediaStreamDestination();
+        const source = context.createMediaStreamSource(track.jitsiTrack.stream);
+        const recorder = context.createScriptProcessor(undefined, 1, 1);
+        recorder.onaudioprocess = (e: AudioProcessingEvent) =>
+            recorderProcess(e, callback);
+
+        console.log("[DEBUG] conn to rec");
+        source.connect(recorder);
+        console.log("[DEBUG] conn to dest");
+        recorder.connect(destination);
+        console.log("[DEBUG] done.");
+    } catch (err) {
+        console.error("PROCESS TRACK");
+        console.error(err);
+    }
+}
+
+function recorderProcess(
+    e: AudioProcessingEvent,
+    callback: (b: Buffer) => void,
+) {
+    console.log("[DEBUG] got audio event");
+    const inputData = e.inputBuffer.getChannelData(0); // Left
+    // const inputDataL = e.inputBuffer.getChannelData(0); // Left
+    // const inputDataR = e.inputBuffer.getChannelData(1); // Right
+    // Combined interleave buffer
+    // const interleaved = new Float32Array(inputDataL.length + inputDataR.length);
+    // let index = 0;
+    // for (let i = 0; i < inputDataL.length; i++) {
+    //     interleaved[index++] = inputDataL[i];
+    //     interleaved[index++] = inputDataR[i];
+    // }
+
+    callback(Buffer.from(inputData.buffer));
+}
+
+async function* fromReadable(stream: PassThrough) {
+    let exhausted = false;
+    const onData = () =>
+        new Promise((resolve) => {
+            stream.once("data", (chunk: any) => {
+                resolve(chunk);
+            });
+        });
+
+    try {
+        while (true) {
+            const chunk = (await onData()) as any;
+            if (chunk === null) {
+                exhausted = true;
+                break;
+            }
+            yield chunk;
+        }
+    } finally {
+        if (!exhausted) {
+            stream.destroy();
+        }
+    }
+}
+
+export function streamAsyncIterator(stream: PassThrough) {
+    return {
+        [Symbol.asyncIterator]() {
+            return fromReadable(stream);
+        },
+    };
 }
