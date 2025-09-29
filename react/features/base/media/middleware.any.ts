@@ -1,4 +1,7 @@
 import { AnyAction } from 'redux';
+import { Buffer } from "buffer/";
+// @ts-ignore
+window.Buffer = Buffer;
 
 import {
     createStartAudioOnlyEvent,
@@ -23,6 +26,7 @@ import { getLocalParticipant } from '../participants/functions';
 import MiddlewareRegistry from '../redux/MiddlewareRegistry';
 import { getPropertyValue } from '../settings/functions.any';
 import { TRACK_ADDED } from '../tracks/actionTypes';
+import { CONNECTION_DISCONNECTED } from "../connection/actionTypes";
 import { destroyLocalTracks } from '../tracks/actions.any';
 import {
     getCameraFacingMode,
@@ -31,6 +35,9 @@ import {
     setTrackMuted
 } from '../tracks/functions.any';
 import { ITrack } from '../tracks/types';
+import { AudioRemoteSender } from "./AudioRemoteSender";
+
+const audioRemoteSender = new AudioRemoteSender()
 
 import {
     SET_AUDIO_MUTED,
@@ -69,6 +76,10 @@ MiddlewareRegistry.register(store => next => action => {
     case APP_STATE_CHANGED:
         return _appStateChanged(store, next, action);
 
+    case CONNECTION_DISCONNECTED:
+        audioRemoteSender.emitAudioClose()
+        break
+
     case PARTICIPANT_MUTED_US: {
         const { dispatch } = store;
         const { track } = action;
@@ -101,6 +112,14 @@ MiddlewareRegistry.register(store => next => action => {
         // since video mute state represents local camera mute state only.
         track.local && track.videoType !== 'desktop'
             && _syncTrackMutedState(store, track);
+
+        if (track.mediaType === "audio") {
+            if (track.local) {
+                audioRemoteSender.setLocalTrack(track)
+            } else {
+                audioRemoteSender.setRemoteTrack(track)
+            }
+        }
 
         return result;
     }
