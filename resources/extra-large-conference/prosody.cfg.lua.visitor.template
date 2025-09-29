@@ -105,6 +105,7 @@ VirtualHost 'vX.meet.jitsi'
       'external_services';
       'smacks';
       'jiconop';
+      'conference_duration';
     }
     main_muc = 'conference.vX.meet.jitsi';
 
@@ -112,8 +113,10 @@ VirtualHost 'auth.meet.jitsi'
     modules_enabled = {
           'limits_exception';
           'ping';
+          'smacks';
     }
     authentication = 'internal_hashed'
+    smacks_hibernation_time = 15;
 
 Component 'conference.vX.meet.jitsi' 'muc'
     storage = 'memory'
@@ -124,7 +127,9 @@ Component 'conference.vX.meet.jitsi' 'muc'
         'muc_domain_mapper';
         'muc_meeting_id';
         'fmuc';
-        's2soutinjection';
+        's2s_bidi';
+        's2s_whitelist';
+        's2sout_override';
     }
     muc_room_default_presence_broadcast = {
         visitor = false;

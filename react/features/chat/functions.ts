@@ -7,7 +7,12 @@ import emojiAsciiAliases from 'react-emoji-render/data/asciiAliases';
 import { IReduxState } from '../app/types';
 import { getLocalizedDateFormatter } from '../base/i18n/dateUtil';
 import i18next from '../base/i18n/i18next';
+import { MEET_FEATURES } from '../base/jwt/constants';
+import { isJwtFeatureEnabled } from '../base/jwt/functions';
+import { getParticipantById } from '../base/participants/functions';
 import { escapeRegexp } from '../base/util/helpers';
+import { getParticipantsPaneWidth } from '../participants-pane/functions';
+import { VIDEO_SPACE_MIN_SIZE } from '../video-layout/constants';
 
 import { MESSAGE_TYPE_ERROR, MESSAGE_TYPE_LOCAL, TIMESTAMP_FORMAT } from './constants';
 import { IMessage } from './types';
@@ -69,7 +74,7 @@ const SLACK_EMOJI_REGEXP_ARRAY: Array<[RegExp, string]> = [];
  * @param {string} message - The message to parse and replace.
  * @returns {string}
  */
-export function replaceNonUnicodeEmojis(message: string) {
+export function replaceNonUnicodeEmojis(message: string): string {
     let replacedMessage = message;
 
     for (const [ regexp, replaceValue ] of SLACK_EMOJI_REGEXP_ARRAY) {
@@ -98,7 +103,7 @@ export function getUnreadCount(state: IReduxState) {
     }
 
     let reactionMessages = 0;
-    let lastReadIndex;
+    let lastReadIndex: number;
 
     if (navigator.product === 'ReactNative') {
         // React native stores the messages in a reversed order.
@@ -161,6 +166,23 @@ export function getMessageText(message: IMessage) {
         : message.message;
 }
 
+
+/**
+ * Returns whether a message can be replied to.
+ *
+ * @param {IReduxState} state - The redux state.
+ * @param {IMessage} message - The message to be checked.
+ * @returns {boolean}
+ */
+export function getCanReplyToMessage(state: IReduxState, message: IMessage) {
+    const { knocking } = state['features/lobby'];
+    const participant = getParticipantById(state, message.participantId);
+
+    return Boolean(participant)
+        && (message.privateMessage || (message.lobbyChat && !knocking))
+        && message.messageType !== MESSAGE_TYPE_LOCAL;
+}
+
 /**
  * Returns the message that is displayed as a notice for private messages.
  *
@@ -171,4 +193,35 @@ export function getPrivateNoticeMessage(message: IMessage) {
     return i18next.t('chat.privateNotice', {
         recipient: message.messageType === MESSAGE_TYPE_LOCAL ? message.recipient : i18next.t('chat.you')
     });
+}
+
+
+/**
+ * Check if participant is not allowed to send group messages.
+ *
+ * @param {IReduxState} state - The redux state.
+ * @returns {boolean} - Returns true if the participant is not allowed to send group messages.
+ */
+export function isSendGroupChatDisabled(state: IReduxState) {
+    const { groupChatRequiresPermission } = state['features/dynamic-branding'];
+
+    if (!groupChatRequiresPermission) {
+        return false;
+    }
+
+    return !isJwtFeatureEnabled(state, MEET_FEATURES.SEND_GROUPCHAT, false);
+}
+
+/**
+ * Calculates the maximum width available for the chat panel based on the current window size
+ * and other UI elements.
+ *
+ * @param {IReduxState} state - The Redux state containing the application's current state.
+ * @returns {number} The maximum width in pixels available for the chat panel. Returns 0 if there
+ * is no space available.
+ */
+export function getChatMaxSize(state: IReduxState) {
+    const { clientWidth } = state['features/base/responsive-ui'];
+
+    return Math.max(clientWidth - getParticipantsPaneWidth(state) - VIDEO_SPACE_MIN_SIZE, 0);
 }

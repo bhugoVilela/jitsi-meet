@@ -8,8 +8,8 @@ import { getLocalParticipant } from '../../../base/participants/functions';
 import Platform from '../../../base/react/Platform.native';
 import { ASPECT_RATIO_NARROW } from '../../../base/responsive-ui/constants';
 import { getHideSelfView } from '../../../base/settings/functions.any';
-import { isToolboxVisible } from '../../../toolbox/functions';
-import { setVisibleRemoteParticipants } from '../../actions';
+import { isToolboxVisible } from '../../../toolbox/functions.native';
+import { setVisibleRemoteParticipants } from '../../actions.native';
 import {
     getFilmstripDimensions,
     isFilmstripVisible,
@@ -81,7 +81,7 @@ interface IProps {
 class Filmstrip extends PureComponent<IProps> {
     /**
      * Whether the local participant should be rendered separately from the
-     * remote participants ie outside of their {@link ScrollView}.
+     * remote participants i.e. outside of their {@link ScrollView}.
      */
     _separateLocalThumbnail: boolean;
 
@@ -234,7 +234,7 @@ class Filmstrip extends PureComponent<IProps> {
      * @inheritdoc
      * @returns {ReactElement}
      */
-    render() {
+    override render() {
         const {
             _aspectRatio,
             _disableSelfView,
@@ -280,6 +280,8 @@ class Filmstrip extends PureComponent<IProps> {
                 <FlatList
                     bounces = { false }
                     data = { participants }
+
+                    /* @ts-ignore */
                     getItemLayout = { this._getItemLayout }
                     horizontal = { isNarrowAspectRatio }
                     initialNumToRender = { initialNumToRender }

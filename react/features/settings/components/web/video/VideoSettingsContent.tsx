@@ -34,6 +34,11 @@ export interface IProps {
     currentCameraDeviceId: string;
 
     /**
+     * Whether the local video flip is disabled.
+     */
+    disableLocalVideoFlip: boolean | undefined;
+
+    /**
      * Whether or not the local video is flipped.
      */
     localFlipX: boolean;
@@ -146,6 +151,7 @@ const stopPropagation = (e: React.MouseEvent) => {
 const VideoSettingsContent = ({
     changeFlip,
     currentCameraDeviceId,
+    disableLocalVideoFlip,
     localFlipX,
     selectBackground,
     setVideoInputDevice,
@@ -251,6 +257,7 @@ const VideoSettingsContent = ({
             previewProps['aria-checked'] = true;
             previewProps.className = cx(classes.previewEntry, classes.selectedEntry);
         } else {
+            previewProps['aria-checked'] = false;
             previewProps.onClick = _onEntryClick(deviceId);
             previewProps.onKeyPress = (e: React.KeyboardEvent) => {
                 if (e.key === ' ' || e.key === 'Enter') {
@@ -263,7 +270,7 @@ const VideoSettingsContent = ({
         return (
             <div
                 { ...previewProps }
-                role = 'radio'>
+                role = 'menuitemradio'>
                 <div className = { classes.labelContainer }>
                     {label && <div className = { classes.label }>
                         <span>{label}</span>
@@ -271,6 +278,7 @@ const VideoSettingsContent = ({
                 </div>
                 <Video
                     className = { cx(classes.previewVideo, 'flipVideoX') }
+                    id = { `video_settings_preview-${index}` }
                     playsinline = { true }
                     videoTrack = {{ jitsiTrack }} />
             </div>
@@ -295,38 +303,42 @@ const VideoSettingsContent = ({
 
     return (
         <ContextMenu
-            aria-labelledby = 'video-settings-button'
+            activateFocusTrap = { true }
             className = { classes.container }
             hidden = { false }
-            id = 'video-settings-dialog'
-            role = 'radiogroup'
-            tabIndex = { -1 }>
-            <ContextMenuItemGroup>
+            id = 'video-settings-dialog'>
+            <ContextMenuItemGroup role = 'group'>
                 {trackData.map((data, i) => _renderPreviewEntry(data, i))}
             </ContextMenuItemGroup>
-            <ContextMenuItemGroup>
+            <ContextMenuItemGroup role = 'group'>
                 { visibleVirtualBackground && <ContextMenuItem
                     accessibilityLabel = { t('virtualBackground.title') }
                     icon = { IconImage }
                     onClick = { selectBackground }
+                    role = 'menuitem'
                     text = { t('virtualBackground.title') } /> }
-                <div
-                    className = { classes.checkboxContainer }
-                    onClick = { stopPropagation }>
-                    <Checkbox
-                        checked = { localFlipX }
-                        label = { t('videothumbnail.mirrorVideo') }
-                        onChange = { _onToggleFlip } />
-                </div>
+                {!disableLocalVideoFlip && (
+                    <div
+                        className = { classes.checkboxContainer }
+                        onClick = { stopPropagation }
+                        role = 'menuitem'>
+                        <Checkbox
+                            checked = { localFlipX }
+                            label = { t('videothumbnail.mirrorVideo') }
+                            onChange = { _onToggleFlip } />
+                    </div>
+                )}
             </ContextMenuItemGroup>
         </ContextMenu>
     );
 };
 
 const mapStateToProps = (state: IReduxState) => {
+    const { disableLocalVideoFlip } = state['features/base/config'];
     const { localFlipX } = state['features/base/settings'];
 
     return {
+        disableLocalVideoFlip,
         localFlipX: Boolean(localFlipX),
         visibleVirtualBackground: checkBlurSupport()
         && checkVirtualBackgroundEnabled(state)

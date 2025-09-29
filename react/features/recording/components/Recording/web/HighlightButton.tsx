@@ -1,7 +1,7 @@
 import { Theme } from '@mui/material';
-import { withStyles } from '@mui/styles';
 import React from 'react';
 import { connect } from 'react-redux';
+import { withStyles } from 'tss-react/mui';
 
 import { openDialog } from '../../../../base/dialog/actions';
 import { translate } from '../../../../base/i18n/functions';
@@ -30,7 +30,10 @@ interface IProps extends AbstractProps {
      */
     _visible: boolean;
 
-    classes: any;
+    /**
+     * An object containing the CSS classes.
+     */
+    classes?: Partial<Record<keyof ReturnType<typeof styles>, string>>;
 }
 
 /**
@@ -69,7 +72,7 @@ const styles = (theme: Theme) => {
             boxSizing: 'border-box' as const,
             color: theme.palette.uiBackground,
             fontSize: '14px',
-            fontWeight: '400',
+            fontWeight: 400,
             left: '4px',
             padding: '16px',
             position: 'absolute' as const,
@@ -79,7 +82,7 @@ const styles = (theme: Theme) => {
         highlightNotificationButton: {
             color: theme.palette.action01,
             cursor: 'pointer',
-            fontWeight: '600',
+            fontWeight: 600,
             marginTop: '8px'
         }
     };
@@ -112,7 +115,7 @@ export class HighlightButton extends AbstractHighlightButton<IProps, IState> {
      *
      * @inheritdoc
      */
-    componentDidMount() {
+    override componentDidMount() {
         window.addEventListener('click', this._onWindowClickListener);
     }
 
@@ -121,7 +124,7 @@ export class HighlightButton extends AbstractHighlightButton<IProps, IState> {
      *
      * @inheritdoc
      */
-    componentWillUnmount() {
+    override componentWillUnmount() {
         window.removeEventListener('click', this._onWindowClickListener);
     }
 
@@ -130,9 +133,9 @@ export class HighlightButton extends AbstractHighlightButton<IProps, IState> {
     *
     * @returns {void}
     */
-    async _onOpenDialog() {
+    _onOpenDialog() {
         const { dispatch } = this.props;
-        const dialogShown = await dispatch(maybeShowPremiumFeatureDialog(MEET_FEATURES.RECORDING));
+        const dialogShown = dispatch(maybeShowPremiumFeatureDialog(MEET_FEATURES.RECORDING));
 
         if (!dialogShown) {
             dispatch(openDialog(StartRecordingDialog));
@@ -146,7 +149,7 @@ export class HighlightButton extends AbstractHighlightButton<IProps, IState> {
     * @param {Event} e - The click event.
     * @returns {void}
     */
-    _onClick(e?: React.MouseEvent) {
+    override _onClick(e?: React.MouseEvent) {
         e?.stopPropagation();
 
         const { _disabled } = this.props;
@@ -177,13 +180,13 @@ export class HighlightButton extends AbstractHighlightButton<IProps, IState> {
      * @inheritdoc
      * @returns {ReactElement}
      */
-    render() {
+    override render() {
         const {
             _disabled,
             _visible,
-            classes,
             t
         } = this.props;
+        const classes = withStyles.getClasses(this.props);
 
         if (!_visible) {
             return null;
@@ -219,4 +222,4 @@ export class HighlightButton extends AbstractHighlightButton<IProps, IState> {
     }
 }
 
-export default withStyles(styles)(translate(connect(_abstractMapStateToProps)(HighlightButton)));
+export default withStyles(translate(connect(_abstractMapStateToProps)(HighlightButton)), styles);

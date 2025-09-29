@@ -121,7 +121,7 @@ MiddlewareRegistry.register(store => next => action => {
         if (isTokenAuthEnabled(config)
             && config.tokenAuthUrlAutoRedirect
             && state['features/base/jwt'].jwt) {
-            // auto redirect is turned on and we have succesfully logged in
+            // auto redirect is turned on and we have successfully logged in
             // let's mark that
             dispatch(setTokenAuthUrlSuccess(true));
         }
@@ -143,7 +143,8 @@ MiddlewareRegistry.register(store => next => action => {
 
     case CONNECTION_FAILED: {
         const { error } = action;
-        const state = store.getState();
+        const { getState } = store;
+        const state = getState();
         const { jwt } = state['features/base/jwt'];
 
         if (error

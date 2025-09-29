@@ -1,12 +1,15 @@
-local get_room_from_jid = module:require "util".get_room_from_jid;
-local room_jid_match_rewrite = module:require "util".room_jid_match_rewrite;
-local is_healthcheck_room = module:require "util".is_healthcheck_room;
+local util = module:require "util";
+local is_admin = util.is_admin;
+local get_room_from_jid = util.get_room_from_jid;
+local room_jid_match_rewrite = util.room_jid_match_rewrite;
+local is_jibri = util.is_jibri;
+local is_healthcheck_room = util.is_healthcheck_room;
+local process_host_module = util.process_host_module;
+local is_transcriber_jigasi = util.is_transcriber_jigasi;
 local jid_resource = require "util.jid".resource;
-local ext_events = module:require "ext_events"
 local st = require "util.stanza";
 local socket = require "socket";
-local json = require "util.json";
-local um_is_admin = require "core.usermanager".is_admin;
+local json = require 'cjson.safe';
 local jid_split = require 'util.jid'.split;
 
 -- we use async to detect Prosody 0.10 and earlier
@@ -17,21 +20,17 @@ if not have_async then
 end
 
 local muc_component_host = module:get_option_string("muc_component");
-local muc_domain_base = module:get_option_string("muc_mapper_domain_base");
+local main_virtual_host = module:get_option_string("muc_mapper_domain_base");
 
-if muc_component_host == nil or muc_domain_base == nil then
+if muc_component_host == nil or main_virtual_host == nil then
     module:log("error", "No muc_component specified. No muc to operate on!");
     return;
 end
-local breakout_room_component_host = "breakout." .. muc_domain_base;
+local breakout_room_component_host = "breakout." .. main_virtual_host;
 
 module:log("info", "Starting speakerstats for %s", muc_component_host);
 
 local main_muc_service;
-
-local function is_admin(jid)
-    return um_is_admin(jid, module.host);
-end
 
 -- Searches all rooms in the main muc component that holds a breakout room
 -- caches it if found so we don't search it again
@@ -220,13 +219,14 @@ end
 
 -- Create SpeakerStats object for the joined user
 function occupant_joined(event)
-    local occupant, room = event.occupant, event.room;
+    local occupant, room, stanza = event.occupant, event.room, event.stanza;
 
-    if is_healthcheck_room(room.jid) or is_admin(occupant.bare_jid) then
+    if is_healthcheck_room(room.jid)
+        or is_admin(occupant.bare_jid)
+        or is_transcriber_jigasi(stanza)
+        or is_jibri(occupant) then
         return;
     end
-
-    local occupant = event.occupant;
 
     local nick = jid_resource(occupant.nick);
 
@@ -263,13 +263,19 @@ function occupant_joined(event)
                 body_json.type = 'speakerstats';
                 body_json.users = users_json;
 
-                local stanza = st.message({
-                    from = module.host;
-                    to = occupant.jid; })
-                :tag("json-message", {xmlns='http://jitsi.org/jitmeet'})
-                :text(json.encode(body_json)):up();
+                local json_msg_str, error = json.encode(body_json);
 
-                room:route_stanza(stanza);
+                if json_msg_str then
+                    local stanza = st.message({
+                        from = module.host;
+                        to = occupant.jid; })
+                    :tag("json-message", {xmlns='http://jitsi.org/jitmeet'})
+                    :text(json_msg_str):up();
+
+                    room:route_stanza(stanza);
+                else
+                    module:log('error', 'Error encoding room:%s error:%s', room.jid, error);
+                end
             end
         end
 
@@ -312,14 +318,14 @@ function room_destroyed(event)
         return;
     end
 
-    ext_events.speaker_stats(room, room.speakerStats);
+    module:fire_event("send-speaker-stats", { room = room; roomSpeakerStats = room.speakerStats; });
 end
 
 module:hook("message/host", on_message);
 
 function process_main_muc_loaded(main_muc, host_module)
     -- the conference muc component
-    module:log("info", "Hook to muc events on %s", host_module);
+    module:log("info", "Hook to muc events on %s", host_module.host);
     main_muc_service = main_muc;
     module:log("info", "Main muc service %s", main_muc_service)
     host_module:hook("muc-room-created", room_created, -1);
@@ -330,29 +336,11 @@ end
 
 function process_breakout_muc_loaded(breakout_muc, host_module)
     -- the Breakout muc component
-    module:log("info", "Hook to muc events on %s", host_module);
+    module:log("info", "Hook to muc events on %s", host_module.host);
     host_module:hook("muc-room-created", breakout_room_created, -1);
     host_module:hook("muc-occupant-joined", occupant_joined, -1);
     host_module:hook("muc-occupant-pre-leave", occupant_leaving, -1);
     host_module:hook("muc-room-destroyed", room_destroyed, -1);
-end
-
--- process a host module directly if loaded or hooks to wait for its load
-function process_host_module(name, callback)
-    local function process_host(host)
-        if host == name then
-            callback(module:context(host), host);
-        end
-    end
-
-    if prosody.hosts[name] == nil then
-        module:log('debug', 'No host/component found, will wait for it: %s', name)
-
-        -- when a host or component is added
-        prosody.events.add_handler('host-activated', process_host);
-    else
-        process_host(name);
-    end
 end
 
 -- process or waits to process the conference muc component
@@ -387,4 +375,10 @@ process_host_module(breakout_room_component_host, function(host_module, host)
             end
         end);
     end
+end);
+
+process_host_module(main_virtual_host, function(host_module)
+    module:context(host_module.host):fire_event('jitsi-add-identity', {
+        name = 'speakerstats'; host = module.host;
+    });
 end);

@@ -1,7 +1,9 @@
 import React from 'react';
-import { Animated,
+import {
+    Animated,
     NativeSyntheticEvent,
     SafeAreaView,
+    StyleProp,
     TextInputFocusEventData,
     TextStyle,
     TouchableHighlight,
@@ -88,7 +90,7 @@ class WelcomePage extends AbstractWelcomePage<IProps> {
      * @inheritdoc
      * @returns {void}
      */
-    componentDidMount() {
+    override componentDidMount() {
         super.componentDidMount();
 
         const {
@@ -122,7 +124,7 @@ class WelcomePage extends AbstractWelcomePage<IProps> {
      * @inheritdoc
      * @returns {ReactElement}
      */
-    render() {
+    override render() {
         // We want to have the welcome page support the reduced UI layout,
         // but we ran into serious issues enabling it so we disable it
         // until we have a proper fix in place. We leave the code here though, because
@@ -256,8 +258,8 @@ class WelcomePage extends AbstractWelcomePage<IProps> {
 
         if (this.state._fieldFocused) {
             return (
-                <Animated.View style = { this._getHintBoxStyle() as ViewStyle }>
-                    <View style = { styles.hintTextContainer } >
+                <Animated.View style = { this._getHintBoxStyle() as ViewStyle[] }>
+                    <View style = { styles.hintTextContainer as ViewStyle } >
                         <Text style = { styles.hintText as TextStyle }>
                             { t('welcomepage.roomnameHint') }
                         </Text>
@@ -330,10 +332,10 @@ class WelcomePage extends AbstractWelcomePage<IProps> {
                 style = { [
                     isSettingsScreenFocused && styles.roomNameInputContainer,
                     { opacity: this.state.roomNameInputAnimation }
-                ] }>
-                <SafeAreaView style = { styles.roomContainer as ViewStyle }>
+                ] as StyleProp<ViewStyle> }>
+                <SafeAreaView style = { styles.roomContainer as StyleProp<ViewStyle> }>
                     <View style = { styles.joinControls } >
-                        <Text style = { styles.enterRoomText }>
+                        <Text style = { styles.enterRoomText as StyleProp<TextStyle> }>
                             { t('welcomepage.roomname') }
                         </Text>
                         <Input

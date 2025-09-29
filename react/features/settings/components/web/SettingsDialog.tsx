@@ -252,7 +252,9 @@ function _mapStateToProps(state: IReduxState, ownProps: any) {
 
                 return {
                     ...newProps,
+                    chatWithPermissionsEnabled: tabState?.chatWithPermissionsEnabled,
                     followMeEnabled: tabState?.followMeEnabled,
+                    followMeRecorderEnabled: tabState?.followMeRecorderEnabled,
                     startAudioMuted: tabState?.startAudioMuted,
                     startVideoMuted: tabState?.startVideoMuted,
                     startReactionsMuted: tabState?.startReactionsMuted
@@ -313,7 +315,7 @@ function _mapStateToProps(state: IReduxState, ownProps: any) {
                     ...newProps,
                     currentLanguage: tabState?.currentLanguage,
                     hideSelfView: tabState?.hideSelfView,
-                    showPrejoinPage: tabState?.showPrejoinPage,
+                    showSubtitlesOnStage: tabState?.showSubtitlesOnStage,
                     maxStageParticipants: tabState?.maxStageParticipants
                 };
             },

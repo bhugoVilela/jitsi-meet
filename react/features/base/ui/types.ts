@@ -1,6 +1,6 @@
 interface ITypographyType {
     fontSize: number;
-    fontWeight: string;
+    fontWeight: number; // TODO: revisit this.
     letterSpacing: number;
     lineHeight: number;
 }
@@ -69,6 +69,7 @@ export interface ITypography {
     bodyShortBoldLarge: ITypographyType;
     bodyShortRegular: ITypographyType;
     bodyShortRegularLarge: ITypographyType;
+    bodyShortRegularSmall: ITypographyType;
     heading1: ITypographyType;
     heading2: ITypographyType;
     heading3: ITypographyType;

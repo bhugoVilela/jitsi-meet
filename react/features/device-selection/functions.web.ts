@@ -105,6 +105,7 @@ export function getVideoDeviceSelectionDialogProps(stateful: IStateful, isDispla
     const inputDeviceChangeSupported = JitsiMeetJS.mediaDevices.isDeviceChangeAvailable('input');
     const userSelectedCamera = getUserSelectedCameraDeviceId(state);
     const { localFlipX } = state['features/base/settings'];
+    const { disableLocalVideoFlip } = state['features/base/config'];
     const hideAdditionalSettings = isPrejoinPageVisible(state) || isDisplayedOnWelcomePage;
     const framerate = state['features/screen-share'].captureFrameRate ?? SS_DEFAULT_FRAME_RATE;
 
@@ -125,8 +126,10 @@ export function getVideoDeviceSelectionDialogProps(stateful: IStateful, isDispla
     return {
         currentFramerate: framerate,
         desktopShareFramerates: SS_SUPPORTED_FRAMERATES,
+        disableDesktopShareSettings: isMobileBrowser(),
         disableDeviceChange: !JitsiMeetJS.mediaDevices.isDeviceChangeAvailable(),
         disableVideoInputSelect,
+        disableLocalVideoFlip,
         hasVideoPermission: permissions.video,
         hideAdditionalSettings,
         hideVideoInputPreview: !inputDeviceChangeSupported || disablePreviews,
@@ -160,7 +163,8 @@ export function processExternalDeviceRequest( // eslint-disable-line max-params
 
     switch (request.name) {
     case 'isDeviceListAvailable':
-        responseCallback(JitsiMeetJS.mediaDevices.isDeviceListAvailable());
+        // TODO(saghul): remove this, eventually.
+        responseCallback(true);
         break;
     case 'isDeviceChangeAvailable':
         responseCallback(

@@ -16,7 +16,7 @@ import '../noise-suppression/reducer';
 import '../screenshot-capture/reducer';
 import '../talk-while-muted/reducer';
 import '../virtual-background/reducer';
-import '../whiteboard/reducer';
 import '../web-hid/reducer';
+import '../file-sharing/reducer';
 
 import './reducers.any';

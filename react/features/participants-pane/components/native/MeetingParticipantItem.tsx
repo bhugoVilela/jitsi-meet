@@ -15,7 +15,7 @@ import {
     isParticipantAudioMuted,
     isParticipantVideoMuted
 } from '../../../base/tracks/functions.native';
-import { showConnectionStatus, showContextMenuDetails, showSharedVideoMenu } from '../../actions.native';
+import { showContextMenuDetails, showSharedVideoMenu } from '../../actions.native';
 import type { MediaState } from '../../constants';
 import { getParticipantAudioMediaState, getParticipantVideoMediaState } from '../../functions';
 
@@ -117,11 +117,7 @@ class MeetingParticipantItem extends PureComponent<IProps> {
         if (_fakeParticipant && _localVideoOwner) {
             dispatch(showSharedVideoMenu(_participantID));
         } else if (!_fakeParticipant) {
-            if (_local) {
-                dispatch(showConnectionStatus(_participantID));
-            } else {
-                dispatch(showContextMenuDetails(_participantID));
-            }
+            dispatch(showContextMenuDetails(_participantID, _local));
         } // else no-op
     }
 
@@ -131,7 +127,7 @@ class MeetingParticipantItem extends PureComponent<IProps> {
      * @inheritdoc
      * @returns {ReactElement}
      */
-    render() {
+    override render() {
         const {
             _audioMediaState,
             _disableModeratorIndicator,
@@ -170,7 +166,7 @@ function mapStateToProps(state: IReduxState, ownProps: any) {
     const { participant } = ownProps;
     const { ownerId } = state['features/shared-video'];
     const localParticipantId = getLocalParticipant(state)?.id;
-    const _isAudioMuted = Boolean(participant && isParticipantAudioMuted(participant, state));
+    const _isAudioMuted = isParticipantAudioMuted(participant, state);
     const _isVideoMuted = isParticipantVideoMuted(participant, state);
     const audioMediaState = getParticipantAudioMediaState(participant, _isAudioMuted, state);
     const videoMediaState = getParticipantVideoMediaState(participant, _isVideoMuted, state);

@@ -1,8 +1,8 @@
 import '../base/app/middleware';
 import '../base/connection/middleware';
-import '../base/i18n/middleware';
 import '../base/devices/middleware';
 import '../base/media/middleware';
+import '../deep-linking/middleware.web';
 import '../dynamic-branding/middleware';
 import '../e2ee/middleware';
 import '../external-api/middleware';
@@ -22,6 +22,7 @@ import '../talk-while-muted/middleware';
 import '../toolbox/middleware';
 import '../face-landmarks/middleware';
 import '../gifs/middleware';
-import '../whiteboard/middleware';
+import '../whiteboard/middleware.web';
+import '../file-sharing/middleware.web';
 
 import './middlewares.any';

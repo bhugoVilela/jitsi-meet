@@ -1,19 +1,17 @@
 import i18next from 'i18next';
 
 import { IReduxState, IStore } from '../app/types';
-import { isMobileBrowser } from '../base/environment/utils';
+import { MEET_FEATURES } from '../base/jwt/constants';
 import { isJwtFeatureEnabled } from '../base/jwt/functions';
-import { JitsiRecordingConstants, browser } from '../base/lib-jitsi-meet';
+import { JitsiRecordingConstants } from '../base/lib-jitsi-meet';
 import { getSoundFileSrc } from '../base/media/functions';
-import {
-    getLocalParticipant,
-    getRemoteParticipants,
-    isLocalParticipantModerator
-} from '../base/participants/functions';
+import { getLocalParticipant, getRemoteParticipants } from '../base/participants/functions';
 import { registerSound, unregisterSound } from '../base/sounds/actions';
-import { isInBreakoutRoom } from '../breakout-rooms/functions';
+import { isSpotTV } from '../base/util/spot';
+import { isInBreakoutRoom as isInBreakoutRoomF } from '../breakout-rooms/functions';
 import { isEnabled as isDropboxEnabled } from '../dropbox/functions';
 import { extractFqnFromPath } from '../dynamic-branding/functions.any';
+import { canAddTranscriber, isRecorderTranscriptionsRunning } from '../transcribing/functions';
 
 import LocalRecordingManager from './components/Recording/LocalRecordingManager';
 import {
@@ -139,9 +137,8 @@ export function getSessionStatusToShow(state: IReduxState, mode: string): string
             }
         }
     }
-    if ((!Array.isArray(recordingSessions) || recordingSessions.length === 0)
-        && mode === JitsiRecordingConstants.mode.FILE
-        && (LocalRecordingManager.isRecordingLocally() || isRemoteParticipantRecordingLocally(state))) {
+    if (!status && mode === JitsiRecordingConstants.mode.FILE
+            && (LocalRecordingManager.isRecordingLocally() || isRemoteParticipantRecordingLocally(state))) {
         status = JitsiRecordingConstants.status.ON;
     }
 
@@ -154,8 +151,82 @@ export function getSessionStatusToShow(state: IReduxState, mode: string): string
  * @returns {boolean} - Whether local recording is supported or not.
  */
 export function supportsLocalRecording() {
-    return browser.isChromiumBased() && !browser.isElectron() && !isMobileBrowser()
-        && navigator.product !== 'ReactNative';
+    return LocalRecordingManager.isSupported();
+}
+
+/**
+ * Returns true if there is a cloud recording running.
+ *
+ * @param {IReduxState} state - The redux state to search in.
+ * @returns {boolean}
+ */
+export function isCloudRecordingRunning(state: IReduxState) {
+    return Boolean(getActiveSession(state, JitsiRecordingConstants.mode.FILE));
+}
+
+/**
+ * Returns true if there is a live streaming running.
+ *
+ * @param {IReduxState} state - The redux state to search in.
+ * @returns {boolean}
+ */
+export function isLiveStreamingRunning(state: IReduxState) {
+    return Boolean(getActiveSession(state, JitsiRecordingConstants.mode.STREAM));
+}
+
+/**
+ * Returns true if there is a recording session running.
+ *
+ * @param {Object} state - The redux state to search in.
+ * @returns {boolean}
+ */
+export function isRecordingRunning(state: IReduxState) {
+    return (
+        isCloudRecordingRunning(state)
+        || LocalRecordingManager.isRecordingLocally()
+    );
+}
+
+/**
+ * Returns true if the participant can stop recording.
+ *
+ * @param {Object} state - The redux state to search in.
+ * @returns {boolean}
+ */
+export function canStopRecording(state: IReduxState) {
+    if (LocalRecordingManager.isRecordingLocally()) {
+        return true;
+    }
+
+    if (isCloudRecordingRunning(state) || isRecorderTranscriptionsRunning(state)) {
+        return isJwtFeatureEnabled(state, MEET_FEATURES.RECORDING, false);
+    }
+
+    return false;
+}
+
+/**
+ * Returns whether the transcription should start automatically when recording starts.
+ *
+ * @param {Object} state - The redux state to search in.
+ * @returns {boolean}
+ */
+export function shouldAutoTranscribeOnRecord(state: IReduxState) {
+    const { transcription } = state['features/base/config'];
+
+    return (transcription?.autoTranscribeOnRecord ?? true) && canAddTranscriber(state);
+}
+
+/**
+ * Returns whether the recording should be shared.
+ *
+ * @param {Object} state - The redux state to search in.
+ * @returns {boolean}
+ */
+export function isRecordingSharingEnabled(state: IReduxState) {
+    const { recordingService } = state['features/base/config'];
+
+    return recordingService?.sharingEnabled ?? false;
 }
 
 /**
@@ -180,7 +251,6 @@ export function getRecordButtonProps(state: IReduxState) {
     // If the containing component provides the visible prop, that is one
     // above all, but if not, the button should be autonomus and decide on
     // its own to be visible or not.
-    const isModerator = isLocalParticipantModerator(state);
     const {
         recordingService,
         localRecording
@@ -188,22 +258,22 @@ export function getRecordButtonProps(state: IReduxState) {
     const localRecordingEnabled = !localRecording?.disable && supportsLocalRecording();
 
     const dropboxEnabled = isDropboxEnabled(state);
-    const recordingEnabled = recordingService?.enabled || localRecordingEnabled || dropboxEnabled;
+    const recordingEnabled = recordingService?.enabled || dropboxEnabled;
 
-    if (isModerator) {
-        visible = recordingEnabled ? isJwtFeatureEnabled(state, 'recording', true) : false;
-    } else {
-        visible = navigator.product !== 'ReactNative' && localRecordingEnabled;
+    if (localRecordingEnabled) {
+        visible = true;
+    } else if (isJwtFeatureEnabled(state, MEET_FEATURES.RECORDING, false)) {
+        visible = recordingEnabled;
     }
 
     // disable the button if the livestreaming is running.
-    if (visible && getActiveSession(state, JitsiRecordingConstants.mode.STREAM)) {
+    if (visible && isLiveStreamingRunning(state)) {
         disabled = true;
         tooltip = 'dialog.recordingDisabledBecauseOfActiveLiveStreamingTooltip';
     }
 
     // disable the button if we are in a breakout room.
-    if (isInBreakoutRoom(state)) {
+    if (isInBreakoutRoomF(state)) {
         disabled = true;
         visible = false;
     }
@@ -283,7 +353,7 @@ export async function sendMeetingHighlight(state: IReduxState) {
  * @param {Object} state - Redux state.
  * @returns {boolean}
  */
-function isRemoteParticipantRecordingLocally(state: IReduxState) {
+export function isRemoteParticipantRecordingLocally(state: IReduxState) {
     const participants = getRemoteParticipants(state);
 
     // eslint-disable-next-line prefer-const
@@ -338,4 +408,77 @@ export function registerRecordingAudioFiles(dispatch: IStore['dispatch'], should
     dispatch(registerSound(
         RECORDING_ON_SOUND_ID,
         getSoundFileSrc(RECORDING_ON_SOUND_FILE, language)));
+}
+
+/**
+ * Returns true if the live-streaming button should be visible.
+ *
+ * @param {boolean} liveStreamingEnabled - True if the live-streaming is enabled.
+ * @param {boolean} liveStreamingAllowed - True if the live-streaming feature is enabled in JWT
+ *                                         or is a moderator if JWT is missing or features are missing in JWT.
+ * @param {boolean} isInBreakoutRoom - True if in breakout room.
+ * @returns {boolean}
+ */
+export function isLiveStreamingButtonVisible({
+    liveStreamingAllowed,
+    liveStreamingEnabled,
+    isInBreakoutRoom
+}: {
+    isInBreakoutRoom: boolean;
+    liveStreamingAllowed: boolean;
+    liveStreamingEnabled: boolean;
+}) {
+    return !isInBreakoutRoom && liveStreamingEnabled && liveStreamingAllowed;
+}
+
+/**
+ * Whether the RecordingConsentDialog should be displayed.
+ *
+ * @param {any} recorderSession - The recorder session.
+ * @param {IReduxState} state - The Redux state.
+ * @returns {boolean}
+ */
+export function shouldRequireRecordingConsent(recorderSession: any, state: IReduxState) {
+    const { requireRecordingConsent, skipRecordingConsentInMeeting }
+        = state['features/dynamic-branding'] || {};
+    const { conference } = state['features/base/conference'] || {};
+    const { requireConsent, skipConsentInMeeting } = state['features/base/config'].recordings || {};
+    const { iAmRecorder, testing: { showSpotConsentDialog = false } = {} } = state['features/base/config'];
+    const { consentRequested } = state['features/recording'];
+
+    if (iAmRecorder) {
+        return false;
+    }
+
+    // For Spot TV instances, check the showSpotConsentDialog config parameter
+    // If showSpotConsentDialog is false (or undefined, defaulting to false), don't show consent dialog
+    if (isSpotTV(state) && !showSpotConsentDialog) {
+        return false;
+    }
+
+    if (!requireConsent && !requireRecordingConsent) {
+        return false;
+    }
+
+    if (consentRequested.has(recorderSession.getID())) {
+        return false;
+    }
+
+    // If we join a meeting that has an ongoing recording `conference` will be undefined since
+    // we get the recording state through the initial presence which happens in between the
+    // WILL_JOIN and JOINED events.
+    if (conference && (skipConsentInMeeting || skipRecordingConsentInMeeting)) {
+        return false;
+    }
+
+    // lib-jitsi-meet may set a JitsiParticipant as the initiator of the recording session or the
+    // JID resource in case it cannot find it. We need to handle both cases.
+    const initiator = recorderSession.getInitiator();
+    const initiatorId = initiator?.getId?.() ?? initiator;
+
+    if (!initiatorId || recorderSession.getStatus() === JitsiRecordingConstants.status.OFF) {
+        return false;
+    }
+
+    return initiatorId !== getLocalParticipant(state)?.id;
 }

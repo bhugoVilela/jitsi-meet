@@ -1,8 +1,8 @@
 import { Theme } from '@mui/material';
-import { withStyles } from '@mui/styles';
 import React from 'react';
 import { WithTranslation } from 'react-i18next';
 import { connect } from 'react-redux';
+import { withStyles } from 'tss-react/mui';
 
 import { IReduxState, IStore } from '../../app/types';
 import { getAvailableDevices } from '../../base/devices/actions.web';
@@ -37,7 +37,7 @@ interface IProps extends AbstractDialogTabProps, WithTranslation {
     /**
      * CSS classes object.
      */
-    classes: any;
+    classes?: Partial<Record<keyof ReturnType<typeof styles>, string>>;
 
     /**
      * Whether or not the audio selector can be interacted with. If true,
@@ -99,7 +99,7 @@ interface IProps extends AbstractDialogTabProps, WithTranslation {
     iAmVisitor: boolean;
 
     /**
-     * Wether noise suppression is on or not.
+     * Whether noise suppression is on or not.
      */
     noiseSuppressionEnabled: boolean;
 
@@ -192,7 +192,7 @@ class AudioDevicesSelection extends AbstractDialogTab<IProps, IState> {
      *
      * @inheritdoc
      */
-    componentDidMount() {
+    override componentDidMount() {
         this._unMounted = false;
         Promise.all([
             this._createAudioInputTrack(this.props.selectedAudioInputId)
@@ -210,7 +210,7 @@ class AudioDevicesSelection extends AbstractDialogTab<IProps, IState> {
      * @param {Object} prevProps - Previous props this component received.
      * @returns {void}
      */
-    componentDidUpdate(prevProps: IProps) {
+    override componentDidUpdate(prevProps: IProps) {
         if (prevProps.selectedAudioInputId
             !== this.props.selectedAudioInputId) {
             this._createAudioInputTrack(this.props.selectedAudioInputId);
@@ -222,7 +222,7 @@ class AudioDevicesSelection extends AbstractDialogTab<IProps, IState> {
      *
      * @inheritdoc
      */
-    componentWillUnmount() {
+    override componentWillUnmount() {
         this._unMounted = true;
         this._disposeAudioInputPreview();
     }
@@ -232,9 +232,8 @@ class AudioDevicesSelection extends AbstractDialogTab<IProps, IState> {
      *
      * @inheritdoc
      */
-    render() {
+    override render() {
         const {
-            classes,
             hasAudioPermission,
             hideAudioInputPreview,
             hideAudioOutputPreview,
@@ -246,6 +245,8 @@ class AudioDevicesSelection extends AbstractDialogTab<IProps, IState> {
             t
         } = this.props;
         const { audioInput, audioOutput } = this._getSelectors();
+
+        const classes = withStyles.getClasses(this.props);
 
         return (
             <div className = { classes.container }>
@@ -392,4 +393,4 @@ const mapStateToProps = (state: IReduxState) => {
     };
 };
 
-export default connect(mapStateToProps)(withStyles(styles)(translate(AudioDevicesSelection)));
+export default connect(mapStateToProps)(withStyles(translate(AudioDevicesSelection), styles));

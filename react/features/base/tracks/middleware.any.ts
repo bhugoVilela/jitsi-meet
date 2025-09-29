@@ -2,9 +2,7 @@ import { batch } from 'react-redux';
 
 import { IStore } from '../../app/types';
 import { _RESET_BREAKOUT_ROOMS } from '../../breakout-rooms/actionTypes';
-import { isPrejoinPageVisible } from '../../prejoin/functions';
 import { getCurrentConference } from '../conference/functions';
-import { getMultipleVideoSendingSupportFeatureFlag } from '../config/functions.any';
 import {
     SET_AUDIO_MUTED,
     SET_CAMERA_FACING_MODE,
@@ -16,9 +14,7 @@ import { gumPending, toggleCameraFacingMode } from '../media/actions';
 import {
     CAMERA_FACING_MODE,
     MEDIA_TYPE,
-    MediaType,
-    SCREENSHARE_MUTISM_AUTHORITY,
-    VIDEO_MUTISM_AUTHORITY
+    MediaType
 } from '../media/constants';
 import { IGUMPendingState } from '../media/types';
 import MiddlewareRegistry from '../redux/MiddlewareRegistry';
@@ -186,40 +182,28 @@ function _getLocalTrack(
  * @private
  * @returns {void}
  */
-async function _setMuted(store: IStore, { ensureTrack, authority, muted }: {
-    authority: number; ensureTrack: boolean; muted: boolean; }, mediaType: MediaType) {
+function _setMuted(store: IStore, { ensureTrack, muted }: {
+    ensureTrack: boolean; muted: boolean; }, mediaType: MediaType) {
     const { dispatch, getState } = store;
     const localTrack = _getLocalTrack(store, mediaType, /* includePending */ true);
     const state = getState();
-
-    if (mediaType === MEDIA_TYPE.SCREENSHARE
-        && getMultipleVideoSendingSupportFeatureFlag(state)
-        && !muted) {
-        return;
-    }
 
     if (localTrack) {
         // The `jitsiTrack` property will have a value only for a localTrack for which `getUserMedia` has already
         // completed. If there's no `jitsiTrack`, then the `muted` state will be applied once the `jitsiTrack` is
         // created.
         const { jitsiTrack } = localTrack;
-        const isAudioOnly = (mediaType === MEDIA_TYPE.VIDEO && authority === VIDEO_MUTISM_AUTHORITY.AUDIO_ONLY)
-            || (mediaType === MEDIA_TYPE.SCREENSHARE && authority === SCREENSHARE_MUTISM_AUTHORITY.AUDIO_ONLY);
 
-        // Screenshare cannot be unmuted using the video mute button unless it is muted by audioOnly in the legacy
-        // screensharing mode.
-        if (jitsiTrack && (
-            jitsiTrack.videoType !== 'desktop' || isAudioOnly || getMultipleVideoSendingSupportFeatureFlag(state))
-        ) {
+        if (jitsiTrack) {
             setTrackMuted(jitsiTrack, muted, state, dispatch)
                 .catch(() => dispatch(trackMuteUnmuteFailed(localTrack, muted)));
         }
-    } else if (!muted && ensureTrack && (typeof APP === 'undefined' || isPrejoinPageVisible(state))) {
-        typeof APP !== 'undefined' && dispatch(gumPending([ mediaType ], IGUMPendingState.PENDING_UNMUTE));
+    } else if (!muted && ensureTrack) {
+        // TODO(saghul): reconcile these 2 types.
+        const createMediaType = mediaType === MEDIA_TYPE.SCREENSHARE ? 'desktop' : mediaType;
 
-        // FIXME: This only runs on mobile now because web has its own way of
-        // creating local tracks. Adjust the check once they are unified.
-        dispatch(createLocalTracksA({ devices: [ mediaType ] })).then(() => {
+        typeof APP !== 'undefined' && dispatch(gumPending([ mediaType ], IGUMPendingState.PENDING_UNMUTE));
+        dispatch(createLocalTracksA({ devices: [ createMediaType ] })).then(() => {
             typeof APP !== 'undefined' && dispatch(gumPending([ mediaType ], IGUMPendingState.NONE));
         });
     }

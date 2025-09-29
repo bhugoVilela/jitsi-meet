@@ -189,7 +189,7 @@ export default class MicrophoneStream extends Readable {
   /**
    * no-op, (flow-control doesn't really work on live audio)
    */
-  public _read(/* bytes */): void {
+  public override _read(/* bytes */): void {
     // no-op, (flow-control doesn't really work on live audio)
   }
 

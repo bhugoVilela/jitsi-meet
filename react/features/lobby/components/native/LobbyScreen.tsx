@@ -48,7 +48,7 @@ class LobbyScreen extends AbstractLobbyScreen<IProps> {
      *
      * @inheritdoc
      */
-    render() {
+    override render() {
         const { _aspectRatio, _roomName } = this.props;
         let contentWrapperStyles;
         let contentContainerStyles;
@@ -69,7 +69,7 @@ class LobbyScreen extends AbstractLobbyScreen<IProps> {
                 safeAreaInsets = { [ 'right' ] }
                 style = { contentWrapperStyles }>
                 <BrandingImageBackground />
-                <View style = { largeVideoContainerStyles }>
+                <View style = { largeVideoContainerStyles as ViewStyle }>
                     <View style = { preJoinStyles.displayRoomNameBackdrop as ViewStyle }>
                         <Text
                             numberOfLines = { 1 }

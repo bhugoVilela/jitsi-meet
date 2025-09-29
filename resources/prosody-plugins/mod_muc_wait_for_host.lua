@@ -6,17 +6,18 @@
 -- the guest domain which is anonymous.
 -- The module has the option to set participants to moderators when connected via token/when they are authenticated
 -- This module depends on mod_persistent_lobby.
-local um_is_admin = require 'core.usermanager'.is_admin;
 local jid = require 'util.jid';
 local util = module:require "util";
+local is_admin = util.is_admin;
 local is_healthcheck_room = util.is_healthcheck_room;
 local is_moderated = util.is_moderated;
+local process_host_module = util.process_host_module;
 
 local disable_auto_owners = module:get_option_boolean('wait_for_host_disable_auto_owners', false);
 
 local muc_domain_base = module:get_option_string('muc_mapper_domain_base');
 if not muc_domain_base then
-    module:log('warn', "No 'muc_mapper_domain_base' option set, disabling muc_mapper plugin inactive");
+    module:log('warn', "No 'muc_mapper_domain_base' option set, disabling module");
     return
 end
 
@@ -40,10 +41,6 @@ if not disable_auto_owners then
             room:set_affiliation(true, occupant.bare_jid, 'owner');
         end
     end, 2);
-end
-
-local function is_admin(jid)
-    return um_is_admin(jid, module.host);
 end
 
 -- if not authenticated user is trying to join the room we enable lobby in it
@@ -93,24 +90,6 @@ module:hook('muc-occupant-pre-join', function (event)
         end
     end
 end);
-
--- process a host module directly if loaded or hooks to wait for its load
-function process_host_module(name, callback)
-    local function process_host(host)
-        if host == name then
-            callback(module:context(host), host);
-        end
-    end
-
-    if prosody.hosts[name] == nil then
-        module:log('debug', 'No host/component found, will wait for it: %s', name)
-
-        -- when a host or component is added
-        prosody.events.add_handler('host-activated', process_host);
-    else
-        process_host(name);
-    end
-end
 
 process_host_module(lobby_muc_component_config, function(host_module, host)
     -- lobby muc component created

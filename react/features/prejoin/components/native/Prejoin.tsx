@@ -38,7 +38,7 @@ import { navigateRoot } from '../../../mobile/navigation/rootNavigationContainer
 import { screen } from '../../../mobile/navigation/routes';
 import AudioMuteButton from '../../../toolbox/components/native/AudioMuteButton';
 import VideoMuteButton from '../../../toolbox/components/native/VideoMuteButton';
-import { isDisplayNameRequired } from '../../functions';
+import { isDisplayNameRequired, isRoomNameEnabled } from '../../functions';
 import { IPrejoinProps } from '../../types';
 import { hasDisplayName } from '../../utils';
 
@@ -58,6 +58,7 @@ const Prejoin: React.FC<IPrejoinProps> = ({ navigation }: IPrejoinProps) => {
         = useSelector((state: IReduxState) => !getFeatureFlag(state, PREJOIN_PAGE_HIDE_DISPLAY_NAME, false));
     const isDisplayNameReadonly = useSelector(isNameReadOnly);
     const roomName = useSelector((state: IReduxState) => getConferenceName(state));
+    const roomNameEnabled = useSelector((state: IReduxState) => isRoomNameEnabled(state));
     const participantName = localParticipant?.name;
     const [ displayName, setDisplayName ]
         = useState(participantName || '');
@@ -69,8 +70,6 @@ const Prejoin: React.FC<IPrejoinProps> = ({ navigation }: IPrejoinProps) => {
     const showDisplayNameInput = useMemo(
         () => isDisplayNameVisible && (displayName || !isDisplayNameReadonly),
         [ displayName, isDisplayNameReadonly, isDisplayNameVisible ]);
-    const [ isJoining, setIsJoining ]
-        = useState(false);
     const onChangeDisplayName = useCallback(event => {
         const fieldValue = getFieldValue(event);
 
@@ -81,7 +80,6 @@ const Prejoin: React.FC<IPrejoinProps> = ({ navigation }: IPrejoinProps) => {
     }, [ displayName ]);
 
     const onJoin = useCallback(() => {
-        setIsJoining(true);
         dispatch(connect());
         navigateRoot(screen.conference.root);
     }, [ dispatch ]);
@@ -111,15 +109,14 @@ const Prejoin: React.FC<IPrejoinProps> = ({ navigation }: IPrejoinProps) => {
     const { PRIMARY, TERTIARY } = BUTTON_TYPES;
 
     useEffect(() => {
-        BackHandler.addEventListener('hardwareBackPress', goBack);
+        const hardwareBackPressSubscription = BackHandler.addEventListener('hardwareBackPress', goBack);
 
         dispatch(setPermanentProperty({
             wasPrejoinDisplayed: true
         }));
 
-        return () => BackHandler.removeEventListener('hardwareBackPress', goBack);
-
-    }, []); // dispatch is not in the dependancy list because we want the action to be dispatched only once when
+        return () => hardwareBackPressSubscription.remove();
+    }, []); // dispatch is not in the dependency list because we want the action to be dispatched only once when
     // the component is mounted.
 
     const headerLeft = () => {
@@ -167,13 +164,17 @@ const Prejoin: React.FC<IPrejoinProps> = ({ navigation }: IPrejoinProps) => {
             <BrandingImageBackground />
             {
                 isFocused
-                && <View style = { largeVideoContainerStyles }>
-                    <View style = { styles.displayRoomNameBackdrop as StyleProp<TextStyle> }>
-                        <Text
-                            numberOfLines = { 1 }
-                            style = { styles.preJoinRoomName as StyleProp<TextStyle> }>
-                            { roomName }
-                        </Text>
+                && <View style = { largeVideoContainerStyles as StyleProp<ViewStyle> }>
+                    <View style = { styles.conferenceInfo as StyleProp<ViewStyle> }>
+                        {roomNameEnabled && (
+                            <View style = { styles.displayRoomNameBackdrop as StyleProp<TextStyle> }>
+                                <Text
+                                    numberOfLines = { 1 }
+                                    style = { styles.preJoinRoomName as StyleProp<TextStyle> }>
+                                    { roomName }
+                                </Text>
+                            </View>
+                        )}
                     </View>
                     <LargeVideo />
                 </View>
@@ -194,22 +195,27 @@ const Prejoin: React.FC<IPrejoinProps> = ({ navigation }: IPrejoinProps) => {
                         placeholder = { t('dialog.enterDisplayName') }
                         value = { displayName } />
                 }
-                {showDisplayNameError && (
-                    <View style = { styles.errorContainer as StyleProp<TextStyle> }>
-                        <Text style = { styles.error as StyleProp<TextStyle> }>{t('prejoin.errorMissingName')}</Text>
-                    </View>)}
+                {
+                    showDisplayNameError && (
+                        <View style = { styles.errorContainer as StyleProp<TextStyle> }>
+                            <Text style = { styles.error as StyleProp<TextStyle> }>
+                                { t('prejoin.errorMissingName') }
+                            </Text>
+                        </View>
+                    )
+                }
                 <Button
                     accessibilityLabel = 'prejoin.joinMeeting'
                     disabled = { showDisplayNameError }
                     labelKey = 'prejoin.joinMeeting'
-                    onClick = { isJoining ? undefined : maybeJoin }
+                    onClick = { maybeJoin }
                     style = { styles.joinButton }
                     type = { PRIMARY } />
                 <Button
                     accessibilityLabel = 'prejoin.joinMeetingInLowBandwidthMode'
                     disabled = { showDisplayNameError }
                     labelKey = 'prejoin.joinMeetingInLowBandwidthMode'
-                    onClick = { isJoining ? undefined : onJoinLowBandwidth }
+                    onClick = { onJoinLowBandwidth }
                     style = { styles.joinButton }
                     type = { TERTIARY } />
             </View>

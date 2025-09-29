@@ -3,7 +3,7 @@ import { WithTranslation } from 'react-i18next';
 import { GestureResponderEvent } from 'react-native';
 
 import { IStore } from '../../../app/types';
-import { NOTIFY_CLICK_MODE } from '../../../toolbox/constants';
+import { NOTIFY_CLICK_MODE } from '../../../toolbox/types';
 import { combineStyles } from '../../styles/functions.any';
 
 import { Styles } from './AbstractToolboxItem';
@@ -375,7 +375,7 @@ export default class AbstractButton<P extends IProps, S = any> extends Component
 
         // blur after click to release focus from button to allow PTT.
         // @ts-ignore
-        e?.currentTarget?.blur && e.currentTarget.blur();
+        e?.currentTarget?.blur?.();
     }
 
     /**
@@ -384,7 +384,7 @@ export default class AbstractButton<P extends IProps, S = any> extends Component
      * @inheritdoc
      * @returns {React$Node}
      */
-    render(): ReactNode {
+    override render(): ReactNode {
         const props: any = {
             ...this.props,
             accessibilityLabel: this._getAccessibilityLabel(),

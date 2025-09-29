@@ -12,10 +12,9 @@ export interface ITrackOptions {
         };
     };
     desktopSharingSourceDevice?: string;
-    desktopSharingSources?: string[];
+    desktopSharingSources?: Array<DesktopSharingSourceType>;
     devices?: string[];
     facingMode?: string;
-    firePermissionPromptIsShownEvent?: boolean;
     micDeviceId?: string | null;
     timeout?: number;
 }
@@ -44,6 +43,7 @@ export interface ITrackOptions {
  * any.
  */
 export interface ITrack {
+    codec: string;
     getOriginalStream: Function;
     isReceivingData: boolean;
     jitsiTrack: any;
@@ -67,8 +67,22 @@ export interface IToggleScreenSharingOptions {
     shareOptions: IShareOptions;
 }
 
+export type DesktopSharingSourceType = 'screen' | 'window';
+
 export interface IShareOptions {
     desktopSharingSourceDevice?: string;
-    desktopSharingSources?: string[];
+    desktopSharingSources?: Array<DesktopSharingSourceType>;
     desktopStream?: any;
+}
+
+export interface ICreateInitialTracksOptions {
+    devices: Array<MediaType>;
+    timeout?: number;
+}
+
+export interface IInitialTracksErrors {
+    audioAndVideoError?: Error;
+    audioOnlyError: Error;
+    screenSharingError: Error;
+    videoOnlyError: Error;
 }

@@ -73,10 +73,10 @@ export default class SectionList extends Component<IProps> {
      * @inheritdoc
      * @returns {ReactElement}
      */
-    render() {
+    override render() {
         return (
             <SafeAreaView
-                style = { styles.container } >
+                style = { styles.container as ViewStyle } >
                 <ReactNativeSectionList
                     ListEmptyComponent = { this.props.ListEmptyComponent }
                     keyExtractor = { this.props.keyExtractor }
